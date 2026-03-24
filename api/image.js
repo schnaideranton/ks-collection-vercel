@@ -1,25 +1,3 @@
-const { google } = require('googleapis');
-const fs = require('fs');
-
-// Load credentials from environment
-const credentials = {
-  client_id: process.env.GOOGLE_CLIENT_ID,
-  client_secret: process.env.GOOGLE_CLIENT_SECRET,
-  refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
-  type: 'authorized_user'
-};
-
-const oauth2Client = new google.auth.OAuth2(
-  credentials.client_id,
-  credentials.client_secret
-);
-
-oauth2Client.setCredentials({
-  refresh_token: credentials.refresh_token
-});
-
-const drive = google.drive({ version: 'v3', auth: oauth2Client });
-
 export default async (req, res) => {
   try {
     // Enable CORS
@@ -34,29 +12,50 @@ export default async (req, res) => {
 
     console.log(`Fetching file: ${id}`);
 
-    // Get file metadata
-    const fileRes = await drive.files.get(
+    // Get access token
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+        grant_type: 'refresh_token'
+      })
+    });
+
+    const tokenData = await tokenResponse.json();
+    
+    if (!tokenData.access_token) {
+      return res.status(401).json({ error: 'Failed to get access token' });
+    }
+
+    const accessToken = tokenData.access_token;
+    console.log(`Got access token: ${accessToken.substring(0, 20)}...`);
+
+    // Fetch file from Google Drive
+    const fileResponse = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${id}?alt=media`,
       {
-        fileId: id,
-        fields: 'mimeType, name'
-      },
-      { responseType: 'stream' }
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      }
     );
 
-    const mimeType = fileRes.data.mimeType || 'application/octet-stream';
-    console.log(`File MIME type: ${mimeType}`);
+    if (!fileResponse.ok) {
+      return res.status(fileResponse.status).json({ 
+        error: `Drive API error: ${fileResponse.status}` 
+      });
+    }
 
-    // Get file content
-    const contentRes = await drive.files.get(
-      {
-        fileId: id,
-        alt: 'media'
-      },
-      { responseType: 'stream' }
-    );
+    // Get content type
+    const contentType = fileResponse.headers.get('content-type') || 'application/octet-stream';
+    res.setHeader('Content-Type', contentType);
 
-    res.setHeader('Content-Type', mimeType);
-    contentRes.data.pipe(res);
+    // Stream response
+    const buffer = await fileResponse.arrayBuffer();
+    res.send(Buffer.from(buffer));
 
   } catch (err) {
     console.error('Error:', err.message);

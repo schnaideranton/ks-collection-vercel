@@ -3,7 +3,5 @@
   "version": "1.0.0",
   "description": "KS Collection image proxy via Google Drive API",
   "main": "api/image.js",
-  "dependencies": {
-    "googleapis": "^118.0.0"
-  }
+  "dependencies": {}
 }
