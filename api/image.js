@@ -1,16 +1,17 @@
 export default async (req, res) => {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+
+  const { id } = req.query;
+
+  if (!id) {
+    res.status(400).end(JSON.stringify({ error: 'No file ID provided' }));
+    return;
+  }
+
   try {
-    // Enable CORS for all domains
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-
-    const { id } = req.query;
-
-    if (!id) {
-      return res.status(400).json({ error: 'No file ID provided' });
-    }
-
     console.log(`Fetching file: ${id}`);
 
     // Get access token
@@ -28,11 +29,12 @@ export default async (req, res) => {
     const tokenData = await tokenResponse.json();
     
     if (!tokenData.access_token) {
-      return res.status(401).json({ error: 'Failed to get access token' });
+      res.status(401).end(JSON.stringify({ error: 'Failed to get access token' }));
+      return;
     }
 
     const accessToken = tokenData.access_token;
-    console.log(`Got access token: ${accessToken.substring(0, 20)}...`);
+    console.log(`Got access token`);
 
     // Fetch file from Google Drive
     const fileResponse = await fetch(
@@ -45,9 +47,8 @@ export default async (req, res) => {
     );
 
     if (!fileResponse.ok) {
-      return res.status(fileResponse.status).json({ 
-        error: `Drive API error: ${fileResponse.status}` 
-      });
+      res.status(fileResponse.status).end(JSON.stringify({ error: `Drive API error: ${fileResponse.status}` }));
+      return;
     }
 
     // Get content type
@@ -56,10 +57,10 @@ export default async (req, res) => {
 
     // Stream response
     const buffer = await fileResponse.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    res.end(Buffer.from(buffer));
 
   } catch (err) {
     console.error('Error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).end(JSON.stringify({ error: err.message }));
   }
 };
